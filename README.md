@@ -138,7 +138,7 @@ feature 별로 현재 (회색) 와 추천 (초록) [LSL .. USL] 범위 + target 
 
 위 차트는 정적 PNG. **줌/툴팁/필터** 가 필요하면:
 - [`outputs/evaluation_report.html`](outputs/evaluation_report.html) 을 브라우저로 열기
-- 또는 `streamlit run src/app.py` → http://localhost:8501
+- 또는 `streamlit run streamlit_app.py` → http://localhost:8501
 
 ---
 
@@ -147,15 +147,20 @@ feature 별로 현재 (회색) 와 추천 (초록) [LSL .. USL] 범위 + target 
 ### Streamlit UI
 
 ```bash
-streamlit run src/app.py
+streamlit run streamlit_app.py
 ```
+
+> ℹ️ `streamlit_app.py` 는 루트의 thin wrapper. `streamlit run src/app.py` 는
+> Python 의 패키지 import 규칙 때문에 `ImportError: attempted relative import`
+> 가 나므로 이 wrapper 를 거쳐 실행한다.
 
 화면 구성:
 1. Data — sample 생성 / `data/` 로드
 2. Train — 모델 학습 + feature importance
 3. Optimization — SPEC 추천 테이블 / 상세 plot / CSV download
 4. Exploration — feature ↔ L3 관계 + segment 분석
-5. Help
+5. Evaluation — 모델 정확도 + 추천 품질 시각화 + HTML 리포트 export
+6. Help
 
 ### CLI (Streamlit 미사용)
 
