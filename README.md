@@ -48,6 +48,23 @@ pip install -r requirements.txt
 
 ---
 
+## 미리 포함된 가상 데이터 + 결과물
+
+다음 파일이 **이미 repo 에 포함**되어 있어 clone 직후 시각화/결과를 바로 확인 가능:
+
+| 파일 | 설명 |
+|---|---|
+| [data/sample_l1.csv](data/sample_l1.csv) | 3,000 wafer 가상 L1 (계측/VM/sensor) |
+| [data/sample_l3.csv](data/sample_l3.csv) | 3,000 wafer 가상 L3 (eds_item fail rate, total_fail_rate, yield) |
+| [data/current_specs.csv](data/current_specs.csv) | 9개 L1 feature 의 현재 LSL/Target/USL (일부 의도적 suboptimal) |
+| [outputs/evaluation_report.html](outputs/evaluation_report.html) | **데이터 개요 + 모델 + 추천 품질** 시각화 통합 리포트 (브라우저로 열기) |
+| [outputs/recommendations.csv](outputs/recommendations.csv) | 9개 feature 추천 결과 |
+| [outputs/model_metrics.csv](outputs/model_metrics.csv) | MAE / RMSE / R² |
+
+→ 새 데이터 생성: `python -m src.app --cli --generate-sample` (같은 seed=42 로 deterministic 재현)
+
+---
+
 ## 실행
 
 ### Streamlit UI
@@ -182,9 +199,27 @@ R² 가 낮아도 추천이 ground-truth 방향과 맞는지가 더 중요하다
 
 ### 3) HTML 리포트 한 번에 보기
 
+[`outputs/evaluation_report.html`](outputs/evaluation_report.html) 을 브라우저로 열면
+다음 순서로 흐름을 따라갈 수 있다 (가상 데이터 기준 사전 생성 포함):
+
+```
+0. 데이터 개요              ← 가상 데이터 분포 + L1↔L3 ground-truth 관계
+   0-1. mart 처음 8행
+   0-2. L1 numeric 분포
+   0-3. L3 yield/fail 분포
+   0-4. 핵심 feature ↔ yield 관계 (역U, step, monotonic, noise)
+   0-5. tool/product 별 yield boxplot
+1. 모델 정확도              ← 데이터 → 모델이 얼마나 잘 잡았나
+   metrics 표 + predicted-vs-actual + residual + feature importance
+2. 추천 품질                ← 모델 → 추천이 얼마나 가치 있나
+   impact bubble + score breakdown + window 비교 + confidence 분포
+3. Top recommendations      ← 엔지니어 검토용 reason 포함
+```
+
+재생성:
+
 ```bash
 python -m src.app --cli --generate-sample --train --recommend --report
-# → outputs/evaluation_report.html (브라우저로 열기)
 ```
 
 또는 Streamlit **Evaluation** 탭에서 동일한 차트 + HTML 다운로드 버튼 제공.

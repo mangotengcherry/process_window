@@ -11,12 +11,8 @@ venv/
 .idea/
 .vscode/
 
-# Synthetic sample data (regenerate with: python -m src.app --cli --generate-sample)
-data/sample_l1.csv
-data/sample_l3.csv
-data/current_specs.csv
-
-# outputs/* are runtime artifacts. The HTML report + small CSVs are kept as a
-# showcase so first-time visitors can see what the prototype produces without
-# running it. Everything is regenerable.
+# Sample data + outputs are committed as a showcase so first-time visitors can
+# clone & open outputs/evaluation_report.html and view data/sample_*.csv without
+# running anything. Regenerate any time via:
+#   python -m src.app --cli --generate-sample --train --recommend --report
 outputs/*.tmp

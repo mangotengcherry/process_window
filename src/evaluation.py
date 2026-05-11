@@ -12,11 +12,15 @@ from sklearn.pipeline import Pipeline
 from .visualization import (
     plot_confidence_distribution,
     plot_feature_importance,
+    plot_ground_truth_relations,
+    plot_l1_distributions,
+    plot_l3_distributions,
     plot_predicted_vs_actual,
     plot_recommendation_impact,
     plot_recommendation_score_breakdown,
     plot_residuals,
     plot_window_comparison,
+    plot_yield_by_segment,
 )
 
 
@@ -72,10 +76,13 @@ def generate_html_report(model: Pipeline,
                          metrics: dict,
                          recommendations: pd.DataFrame,
                          feature_importance_df: pd.DataFrame | None,
-                         out_path: Path) -> Path:
-    """Write a single-file HTML evaluation report combining model + recommendation views.
+                         out_path: Path,
+                         full_df: pd.DataFrame | None = None,
+                         numeric_features: list[str] | None = None) -> Path:
+    """Write a single-file HTML evaluation report combining data + model + recommendation views.
 
     Sections:
+      0. Data overview (L1/L3 분포, ground-truth 관계, segment box) — full_df 가 있으면
       1. Model accuracy (predicted vs actual, residuals, feature importance)
       2. Recommendation quality (impact bubble, score breakdown,
          current-vs-recommended windows, confidence distribution)
@@ -97,6 +104,57 @@ def generate_html_report(model: Pipeline,
         "RMSE": metrics.get("RMSE", float("nan")),
         "R2": metrics.get("R2", float("nan")),
     }])
+
+    # ---- section 0: data overview (optional) ----
+    data_section_html = ""
+    if full_df is not None and numeric_features:
+        fig_l1 = plot_l1_distributions(full_df, numeric_features)
+        fig_l3 = plot_l3_distributions(full_df)
+        fig_gt = plot_ground_truth_relations(full_df, target_col=target_col)
+        fig_seg_tool = plot_yield_by_segment(full_df, by="tool_id", target_col=target_col)
+        fig_seg_prod = plot_yield_by_segment(full_df, by="product", target_col=target_col)
+
+        sample_head_html = _table_html(full_df.head(8))
+
+        data_section_html = f"""
+<h2>0. 데이터 개요 (시각화로 본 input)</h2>
+<p class="legend">모델/추천에 들어가는 <b>가상 데이터의 분포와 L1↔L3 관계</b>를
+먼저 본다. 추천 결과가 왜 그렇게 나오는지 데이터 자체에서 직관적으로 확인 가능.</p>
+
+<h3>0-1. mart 처음 8행</h3>
+<p class="legend">L1 (계측/VM/sensor) + L3 (eds_item 별 fail rate, total_fail_rate, yield) 를
+wafer_id 로 join 한 분석용 mart.</p>
+{sample_head_html}
+
+<h3>0-2. L1 numeric feature 분포</h3>
+<p class="legend">각 feature 가 어떤 평균/스케일/노이즈를 가지는지.
+metrology_x1 (μ≈10, σ≈1), vm_x1 (μ≈100, σ≈3) 등.</p>
+{_fig_html(fig_l1)}
+
+<h3>0-3. L3 yield / total_fail_rate 분포</h3>
+<p class="legend">대부분 wafer 가 yield 0.9 근처에 모여 있고 fail rate 는 0.1 이하 분포.
+가상 데이터지만 fab 의 일반적 형태.</p>
+{_fig_html(fig_l3)}
+
+<h3>0-4. 핵심 feature ↔ yield 관계 (planted ground truth)</h3>
+<p class="legend">파란 점 = 실제 wafer, 빨간 선 = bin 평균. 다음 4개 feature 의 관계가
+추천 결과 검증의 기준이 된다:</p>
+<ul class="legend">
+  <li><b>metrology_x1</b>: <i>역 U-자</i> (true optimum ≈ 10). 양쪽으로 멀어질수록 yield 떨어짐 → target 을 10 근처로 당겨야 함.</li>
+  <li><b>vm_x1</b>: <i>step</i> (≈95 미만에서 yield jump down) → LSL 을 95 위로 끌어올려야 함.</li>
+  <li><b>metrology_x2</b>: <i>단조 감소</i> (≈5.5 초과시 yield ↓) → USL 을 5.5 부근으로 좁혀야 함.</li>
+  <li><b>metrology_x3</b>: <i>관계 없음</i> (noise 만) → 추천 거의 없어야 정상 (Confidence C 기대).</li>
+</ul>
+{_fig_html(fig_gt)}
+
+<h3>0-5. Segment 별 yield 분포 (tool / product)</h3>
+<p class="legend">설비/제품 간 systematic bias 가 있는지. 어떤 그룹이 항상 낮은
+yield 라면 그 그룹에 특화된 분석/조정 필요.</p>
+<div class="grid">
+  <div>{_fig_html(fig_seg_tool)}</div>
+  <div>{_fig_html(fig_seg_prod)}</div>
+</div>
+"""
 
     fig_pa = plot_predicted_vs_actual(y_true, y_pred, f"Predicted vs Actual ({target_col})")
     fig_res = plot_residuals(y_true, y_pred)
@@ -144,6 +202,8 @@ def generate_html_report(model: Pipeline,
   ⚠ 본 추천은 통계적 상관관계 기반이며 <b>인과관계가 아니다</b>.
   실제 SPEC 변경 전 도메인 엔지니어 검토 + pilot lot 검증 필수.
 </div>
+
+{data_section_html}
 
 <h2>1. 모델 정확도</h2>
 <p class="legend"><b>지표</b>: MAE = 평균 절대 오차 (작을수록 좋음),

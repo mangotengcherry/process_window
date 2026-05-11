@@ -247,3 +247,101 @@ def plot_confidence_distribution(recs: pd.DataFrame,
                  title=title)
     fig.update_layout(showlegend=False)
     return fig
+
+
+# ===================== Data overview visualisations =====================
+# Shown at the very top of the evaluation report so a reviewer first sees
+# WHAT the data looks like before they see how the model/recommender behaves.
+
+
+def plot_l1_distributions(df: pd.DataFrame, numeric_features: list[str]) -> go.Figure:
+    """Small-multiple histograms of all L1 numeric features (3 columns)."""
+    feats = [c for c in numeric_features if c in df.columns]
+    if not feats:
+        return go.Figure().update_layout(title="L1 분포: 컬럼 없음")
+    long = df[feats].melt(var_name="feature", value_name="value").dropna()
+    fig = px.histogram(long, x="value", facet_col="feature", facet_col_wrap=3,
+                       nbins=40, title="L1 numeric feature 분포")
+    fig.update_yaxes(matches=None, showticklabels=True)
+    fig.update_xaxes(matches=None, showticklabels=True)
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+    fig.update_layout(height=600, showlegend=False)
+    return fig
+
+
+def plot_l3_distributions(df: pd.DataFrame) -> go.Figure:
+    """Histogram of yield + total_fail_rate side by side."""
+    cols = [c for c in ["yield", "total_fail_rate"] if c in df.columns]
+    if not cols:
+        return go.Figure().update_layout(title="L3 분포: 컬럼 없음")
+    long = df[cols].melt(var_name="metric", value_name="value").dropna()
+    fig = px.histogram(long, x="value", facet_col="metric", nbins=40,
+                       title="L3 yield / total_fail_rate 분포",
+                       color="metric",
+                       color_discrete_map={"yield": "#2ca02c", "total_fail_rate": "#d62728"})
+    fig.update_xaxes(matches=None, showticklabels=True)
+    fig.update_yaxes(matches=None, showticklabels=True)
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+    fig.update_layout(showlegend=False)
+    return fig
+
+
+def plot_ground_truth_relations(df: pd.DataFrame,
+                                features: tuple[str, ...] = (
+                                    "metrology_x1", "vm_x1", "metrology_x2", "metrology_x3",
+                                ),
+                                target_col: str = "yield",
+                                n_bins: int = 20) -> go.Figure:
+    """For key features, scatter + binned-mean line in a 2x2 facet.
+
+    Lets the reviewer SEE the data-side reason a recommendation makes sense
+    (e.g. inverted-U for metrology_x1, step drop for vm_x1).
+    """
+    feats = [f for f in features if f in df.columns]
+    if not feats or target_col not in df.columns:
+        return go.Figure().update_layout(title="Ground-truth 관계: data 부족")
+
+    rows = (len(feats) + 1) // 2
+    fig = go.Figure()
+    fig = px.scatter(title=f"핵심 feature vs {target_col} (scatter + bin mean)")
+    # Build facet manually via subplots
+    from plotly.subplots import make_subplots
+    fig = make_subplots(rows=rows, cols=2, subplot_titles=feats,
+                        horizontal_spacing=0.10, vertical_spacing=0.15)
+    for i, f in enumerate(feats):
+        r = i // 2 + 1
+        c = i % 2 + 1
+        s = df[[f, target_col]].dropna()
+        fig.add_trace(go.Scattergl(x=s[f], y=s[target_col], mode="markers",
+                                   marker=dict(opacity=0.2, size=4, color="#1f77b4"),
+                                   name=f, showlegend=False), row=r, col=c)
+        try:
+            s = s.copy()
+            s["bin"] = pd.qcut(s[f], q=n_bins, duplicates="drop")
+            agg = s.groupby("bin", observed=True).agg(
+                mean_yield=(target_col, "mean"),
+                bin_center=(f, "mean"),
+            ).reset_index(drop=True)
+            fig.add_trace(go.Scatter(x=agg["bin_center"], y=agg["mean_yield"],
+                                     mode="lines+markers",
+                                     line=dict(color="red", width=2),
+                                     name="bin mean", showlegend=(i == 0)),
+                          row=r, col=c)
+        except ValueError:
+            pass
+        fig.update_xaxes(title_text=f, row=r, col=c)
+        fig.update_yaxes(title_text=target_col, row=r, col=c)
+    fig.update_layout(height=300 * rows,
+                      title=f"핵심 feature ↔ {target_col} 관계 (planted ground truth)")
+    return fig
+
+
+def plot_yield_by_segment(df: pd.DataFrame, by: str = "tool_id",
+                          target_col: str = "yield") -> go.Figure:
+    """Box plot of yield per segment to surface tool/product systematic bias."""
+    if by not in df.columns or target_col not in df.columns:
+        return go.Figure().update_layout(title=f"{by} 별 {target_col}: 컬럼 없음")
+    fig = px.box(df, x=by, y=target_col, color=by,
+                 title=f"{by} 별 {target_col} 분포")
+    fig.update_layout(showlegend=False)
+    return fig
