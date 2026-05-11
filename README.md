@@ -57,11 +57,79 @@ pip install -r requirements.txt
 | [data/sample_l1.csv](data/sample_l1.csv) | 3,000 wafer 가상 L1 (계측/VM/sensor) |
 | [data/sample_l3.csv](data/sample_l3.csv) | 3,000 wafer 가상 L3 (eds_item fail rate, total_fail_rate, yield) |
 | [data/current_specs.csv](data/current_specs.csv) | 9개 L1 feature 의 현재 LSL/Target/USL (일부 의도적 suboptimal) |
-| [outputs/evaluation_report.html](outputs/evaluation_report.html) | **데이터 개요 + 모델 + 추천 품질** 시각화 통합 리포트 (브라우저로 열기) |
+| [outputs/evaluation_report.html](outputs/evaluation_report.html) | **데이터 개요 + 모델 + 추천 품질** 시각화 통합 인터랙티브 리포트 (브라우저로 열기) |
 | [outputs/recommendations.csv](outputs/recommendations.csv) | 9개 feature 추천 결과 |
 | [outputs/model_metrics.csv](outputs/model_metrics.csv) | MAE / RMSE / R² |
 
 → 새 데이터 생성: `python -m src.app --cli --generate-sample` (같은 seed=42 로 deterministic 재현)
+
+---
+
+## 시각화 예시 (GitHub 페이지에서 바로 확인)
+
+가상 데이터 3,000 wafer 로 학습/추천한 결과 (스크립트 `python -m src.export_readme_images` 로 재생성).
+
+### 1) 입력 데이터 — L1 feature 분포
+
+3,000 wafer 의 9개 L1 numeric feature 분포. 각 feature 의 평균/스케일/노이즈 수준 확인용.
+
+![L1 feature 분포](docs/images/l1_distributions.png)
+
+### 2) Ground truth — 핵심 feature ↔ yield 관계
+
+여기서 데이터에 **심어둔 관계** 가 한눈에 보인다. 추천 결과 검증의 기준.
+
+![핵심 feature vs yield](docs/images/ground_truth.png)
+
+- **metrology_x1**: 역U (true optimum ≈ 10) → 추천이 target 을 10 근처로 끌어와야 정답
+- **vm_x1**: step (95 미만에서 yield drop) → LSL 을 95 위로 끌어올려야 정답
+- **metrology_x2**: monotonic (5.5 초과 시 yield ↓) → USL 을 5.5 부근으로 좁혀야 정답
+- **metrology_x3**: noise → 추천이 거의 없거나 Confidence C 가 정답
+
+### 3) 모델 정확도 — Predicted vs Actual
+
+`HistGradientBoostingRegressor` 학습 결과 (random split, R² ≈ 0.44).
+점이 빨간 대각선 주변에 모일수록 정확. 가상 데이터에 노이즈를 0.01 σ 정도 섞었으므로 산포는 정상.
+
+![Predicted vs Actual](docs/images/predicted_vs_actual.png)
+
+### 4) 추천 품질 — Impact (uplift × coverage loss)
+
+각 feature 추천의 **좌상단** (낮은 coverage loss + 높은 yield uplift) 일수록 가치 있음.
+색 = Confidence (A=초록 / B=주황 / C=회색), 크기 = |score|.
+
+![Recommendation Impact](docs/images/recommendation_impact.png)
+
+- `vm_x1`: yield uplift 최대 (~+0.004) → step 경계 발견에 성공
+- `metrology_x2`: 중간 uplift + B 등급
+- `metrology_x1`: 우상단 — uplift 는 있으나 coverage 손실 큼 (target 을 10 근처로 당기면서 spec 좁아짐)
+- 하단 무리: noise/약한 효과 feature 들 (sensor_*, metrology_x3)
+
+### 5) Score Breakdown
+
+각 추천의 final score 가 어떤 구성요소 (uplift / bonus − coverage/instability/bias penalty) 의 합으로 나왔는지.
+검은 다이아몬드 = 최종 점수.
+
+![Score Breakdown](docs/images/score_breakdown.png)
+
+대부분 feature 가 `instability penalty + bias penalty` 로 점수가 깎이는 게 보임 → 추천 신뢰도가 전반적으로 낮음 → R² 개선 또는 segment 별 모델 필요 (다음 단계).
+
+### 6) Current vs Recommended Window
+
+feature 별로 현재 (회색) 와 추천 (초록) [LSL .. USL] 범위 + target (×).
+이동 방향 / 좁힘 / 넓힘이 한눈에.
+
+![Window Comparison](docs/images/window_comparison.png)
+
+- `vm_x1`: LSL 90 → ~95 로 끌어올림 (step 경계와 일치) ✓
+- `metrology_x1`: target 10.5 → ~10.08 로 이동 (true optimum 10 과 거의 일치) ✓
+- `metrology_x2`: USL 6.5 → ~5.70 으로 좁힘 (5.5 임계 직후) ✓
+
+### → 인터랙티브 버전
+
+위 차트는 정적 PNG. **줌/툴팁/필터** 가 필요하면:
+- [`outputs/evaluation_report.html`](outputs/evaluation_report.html) 을 브라우저로 열기
+- 또는 `streamlit run src/app.py` → http://localhost:8501
 
 ---
 
