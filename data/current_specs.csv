@@ -1,10 +1,10 @@
 feature_name,current_lsl,current_target,current_usl,adjustable_flag
-metrology_x1,8.0,10.5,12.0,1
-metrology_x2,4.0,5.0,6.5,1
-metrology_x3,15.0,20.0,25.0,1
+metrology_x1,8.0,10.0,12.0,1
 vm_x1,90.0,100.0,110.0,1
-vm_x2,45.0,50.0,55.0,1
-sensor_mean_1,0.8,1.0,1.2,1
+metrology_x2,4.0,5.0,6.5,1
 sensor_std_1,0.05,0.2,0.35,1
+sensor_mean_1,0.8,1.0,1.2,1
+metrology_x3,15.0,20.0,25.0,1
+vm_x2,45.0,50.0,55.0,1
 sensor_max_1,1.0,1.5,2.0,1
 sensor_slope_1,-0.15,0.0,0.15,1

@@ -75,21 +75,26 @@ pip install -r requirements.txt
 
 ![L1 feature 분포](docs/images/l1_distributions.png)
 
-### 2) Ground truth — 핵심 feature ↔ yield 관계
+### 2) Ground truth — 네 가지 window 모양 (feature ↔ fail rate)
 
-여기서 데이터에 **심어둔 관계** 가 한눈에 보인다. 추천 결과 검증의 기준.
+현장 직관에 맞춰 y축은 **total_fail_rate**. 회색 점선 = 현재 LSL/USL, 검은 실선 = 현재 target.
+data 에 의도적으로 심어둔 네 가지 전형적 window 모양:
 
-![핵심 feature vs yield](docs/images/ground_truth.png)
+![핵심 feature vs fail rate](docs/images/ground_truth.png)
 
-- **metrology_x1**: 역U (true optimum ≈ 10) → 추천이 target 을 10 근처로 끌어와야 정답
-- **vm_x1**: step (95 미만에서 yield drop) → LSL 을 95 위로 끌어올려야 정답
-- **metrology_x2**: monotonic (5.5 초과 시 yield ↓) → USL 을 5.5 부근으로 좁혀야 정답
-- **metrology_x3**: noise → 추천이 거의 없거나 Confidence C 가 정답
+| 모양 | 예시 feature | 데이터 특성 | 정답 SPEC 추천 |
+|---|---|---|---|
+| **양쪽 들림 (U)** | metrology_x1, vm_x1 | optimum 중심에서 멀어질수록 fail↑ | target 유지, window 양쪽 좁힘 |
+| **오른쪽 들림** | metrology_x2, sensor_std_1 | 특정 임계 초과 시 fail↑ | USL 좁힘 |
+| **왼쪽 들림** | metrology_x3 | 특정 임계 미만 시 fail↑ | LSL 끌어올림 |
+| **flat (noise)** | vm_x2, sensor_max_1, sensor_slope_1 | 관계 없음 | 추천 없음 / Confidence C |
+
+(이 모양은 fab 에서 흔히 관찰되는 4가지 trend 패턴을 그대로 모사한 것)
 
 ### 3) 모델 정확도 — Predicted vs Actual
 
-`HistGradientBoostingRegressor` 학습 결과 (random split, R² ≈ 0.44).
-점이 빨간 대각선 주변에 모일수록 정확. 가상 데이터에 노이즈를 0.01 σ 정도 섞었으므로 산포는 정상.
+`HistGradientBoostingRegressor` 학습 결과 (random split, **R² ≈ 0.81**).
+점이 빨간 대각선 주변에 모일수록 정확. ground-truth 관계가 분명하기 때문에 model 이 큰 패턴을 잘 잡아낸다.
 
 ![Predicted vs Actual](docs/images/predicted_vs_actual.png)
 
@@ -100,10 +105,10 @@ pip install -r requirements.txt
 
 ![Recommendation Impact](docs/images/recommendation_impact.png)
 
-- `vm_x1`: yield uplift 최대 (~+0.004) → step 경계 발견에 성공
-- `metrology_x2`: 중간 uplift + B 등급
-- `metrology_x1`: 우상단 — uplift 는 있으나 coverage 손실 큼 (target 을 10 근처로 당기면서 spec 좁아짐)
-- 하단 무리: noise/약한 효과 feature 들 (sensor_*, metrology_x3)
+- **metrology_x1** (양쪽 들림): yield uplift **+2.3%p** — 양쪽 좁히는 추천이 가장 큰 효과. Confidence A.
+- **metrology_x3** (왼쪽 들림): uplift +0.6%p — LSL 끌어올리기 추천.
+- **metrology_x2** (오른쪽 들림): uplift +0.4%p, **Confidence A** — USL 좁힘.
+- **하단 무리**: flat/약한 효과 feature 들 (vm_x2, sensor_max_1 등) → 추천 점수 ≈ 0, Confidence C. 의도된 결과.
 
 ### 5) Score Breakdown
 
@@ -114,16 +119,20 @@ pip install -r requirements.txt
 
 대부분 feature 가 `instability penalty + bias penalty` 로 점수가 깎이는 게 보임 → 추천 신뢰도가 전반적으로 낮음 → R² 개선 또는 segment 별 모델 필요 (다음 단계).
 
-### 6) Current vs Recommended Window
+### 6) Current vs Recommended Window — 모양별 추천이 다르게 나옴
 
 feature 별로 현재 (회색) 와 추천 (초록) [LSL .. USL] 범위 + target (×).
-이동 방향 / 좁힘 / 넓힘이 한눈에.
+**이동 방향 / 좁힘 / 넓힘이 ground-truth 모양에 맞게 다르게 나오는지** 가 핵심 검증 지점.
 
 ![Window Comparison](docs/images/window_comparison.png)
 
-- `vm_x1`: LSL 90 → ~95 로 끌어올림 (step 경계와 일치) ✓
-- `metrology_x1`: target 10.5 → ~10.08 로 이동 (true optimum 10 과 거의 일치) ✓
-- `metrology_x2`: USL 6.5 → ~5.70 으로 좁힘 (5.5 임계 직후) ✓
+| Feature | 모양 | 현재 [LSL..USL] | 추천 [LSL..USL] | 검증 |
+|---|---|---|---|---|
+| metrology_x1 | 양쪽 들림 | [8, 12] | ~[9, 11] | 양쪽 좁힘 ✓ |
+| vm_x1 | 양쪽 들림 (asymmetric) | [90, 110] | ~[95, 107] | 양쪽 좁힘 ✓ |
+| metrology_x2 | 오른쪽 들림 | [4, 6.5] | ~[4, 5.7] | USL 좁힘 ✓ |
+| metrology_x3 | 왼쪽 들림 | [15, 25] | ~[18, 24] | LSL 끌어올림 ✓ |
+| vm_x2, sensor_max_1 | flat | (변동 없음) | (거의 동일) | 추천 무의미 ✓ |
 
 ### → 인터랙티브 버전
 
@@ -173,18 +182,22 @@ python -m src.app --cli --generate-sample --train --recommend --report --top-n 1
 
 ## Sample Data 생성 방식
 
-`src/data_generator.py` 가 다음 ground-truth 관계를 가진 synthetic data 를 만든다 (추천 결과 검증용):
+`src/data_generator.py` 가 fab 에서 흔히 보는 **네 가지 window 모양** (fail-rate 관점) 을 모두
+포함한 synthetic data 를 만든다. 각 feature 의 fail-rate 곡선이 다음 모양 중 하나:
 
-| Feature | 관계 | 검증 기대 |
+| 모양 | Feature | 데이터 룰 |
 |---|---|---|
-| `metrology_x1` | 2차 곡선, true optimum = 10 (current_target 10.5) | target 을 10 근처로 당김 |
-| `metrology_x2` | 단조 증가, 5.5 초과시 fail↑ | USL 을 5.5 부근으로 좁힘 |
-| `metrology_x3` | 무관계 (noise) | uplift ≈ 0, confidence C |
-| `vm_x1` | step function, 95 미만에서 fail jump | LSL 을 95 위로 끌어올림 |
-| `vm_x2` | 약한 monotonic | 작은 추천 |
-| `sensor_mean_1` | TOOL_A 에서만 효과 (interaction) | 추천 + bias_penalty 가능 |
+| **양쪽 들림 (U)** | `metrology_x1` | `fail += 0.04 · ((x - 10)/1)²` (optimum 10) |
+| **양쪽 들림 (asymmetric)** | `vm_x1` | left arm `0.006·(95-x)^1.5`, right arm `0.003·(x-107)^1.2` |
+| **오른쪽 들림** | `metrology_x2` | `fail += 0.10 · max(0, x - 5.5)` |
+| **오른쪽 들림 (mild)** | `sensor_std_1` | `fail += 0.20 · max(0, x - 0.22)` |
+| **오른쪽 들림 + 교호작용** | `sensor_mean_1` | `TOOL_A`에서만 `0.06 · max(0, x-1.0)` — segment bias 데모 |
+| **왼쪽 들림** | `metrology_x3` | `fail += 0.05 · max(0, 18 - x)` |
+| **flat (noise)** | `vm_x2`, `sensor_max_1`, `sensor_slope_1` | 효과 없음 (음성 대조군) |
 
-`current_specs.csv` 는 의도적으로 target 이 true optimum 에서 벗어나도록 설정되어 있다.
+`current_specs.csv` 는 의도적으로 suboptimal: 양쪽 들림은 window 가 너무 넓고, 오른쪽 들림은
+USL 이 fail 영역까지 허용, 왼쪽 들림은 LSL 이 fail 영역까지 허용. 추천이 이를 올바른 방향으로
+조정하는지가 검증 기준.
 
 ---
 
@@ -294,14 +307,16 @@ python -m src.app --cli --generate-sample --train --recommend --report
 
 ### 4) Ground-truth 대조 (synthetic data 한정)
 
-`src/data_generator.py` 는 알려진 관계를 심어 두므로 추천이 맞는지 즉시 검증 가능:
+`src/data_generator.py` 는 4가지 window 모양 (양쪽/왼쪽/오른쪽/flat) 을 모두 심어두므로,
+추천이 모양에 맞게 적절히 다르게 나오는지 즉시 검증 가능:
 
-| Feature | 정답 | 기대 결과 | 실측 |
+| Feature | 모양 | 정답 추천 방향 | 실측 |
 |---|---|---|---|
-| `metrology_x1` | true optimum = 10 (current target 10.5) | target 을 10 근처로 이동 | **추천 target ≈ 10.08** ✓ |
-| `vm_x1` | 95 미만에서 fail jump | LSL 을 95 위로 끌어올림 | **추천 LSL ≈ 95.27** ✓ |
-| `metrology_x2` | 5.5 초과 monotonic 악화 | USL 을 5.5 부근으로 좁힘 | **추천 USL ≈ 5.70** ✓ |
-| `metrology_x3` | 신호 없음 | uplift ≈ 0, confidence C | ✓ |
+| `metrology_x1` | 양쪽 들림 (U) | 양쪽 좁힘, target 10 유지 | LSL 8→9, USL 12→11 ✓ Confidence A |
+| `vm_x1` | 양쪽 들림 (asymmetric) | 양쪽 좁힘 | LSL 90→95, USL 110→107 ✓ |
+| `metrology_x2` | 오른쪽 들림 | USL 좁힘 | USL 6.5→5.7 ✓ Confidence A |
+| `metrology_x3` | 왼쪽 들림 | LSL 끌어올림 | LSL 15→18.7 ✓ |
+| `vm_x2`, `sensor_max_1` | flat | 추천 없음 / Confidence C | 변화 거의 없음 ✓ |
 
 실제 fab 데이터에는 ground-truth 가 없으므로 위 1) + 2) 의 정량 + 정성 지표와
 **도메인 엔지니어 검토** 가 평가의 핵심이 된다.

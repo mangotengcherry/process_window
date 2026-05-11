@@ -86,6 +86,7 @@ def run_cli(args) -> None:
             recommendations=recs, feature_importance_df=imp,
             out_path=REPORT_PATH,
             full_df=mart, numeric_features=cols["numeric_features"],
+            specs=specs,
         )
         print(f"[report] wrote {path}")
 
@@ -285,6 +286,7 @@ def run_streamlit() -> None:
                     out_path=REPORT_PATH,
                     full_df=st.session_state.mart,
                     numeric_features=st.session_state.cols["numeric_features"],
+                    specs=st.session_state.specs,
                 )
                 st.success(f"저장 완료: {path}")
                 with open(path, "rb") as fh:

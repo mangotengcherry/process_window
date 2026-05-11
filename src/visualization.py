@@ -286,27 +286,43 @@ def plot_l3_distributions(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+SHAPE_LABELS = {
+    "metrology_x1": "양쪽 들림 (U)",
+    "vm_x1": "양쪽 들림 (U, asymmetric)",
+    "metrology_x2": "오른쪽 들림",
+    "sensor_std_1": "오른쪽 들림 (mild)",
+    "sensor_mean_1": "오른쪽 들림 + TOOL_A 교호작용",
+    "metrology_x3": "왼쪽 들림",
+    "vm_x2": "flat (noise)",
+    "sensor_max_1": "flat (noise)",
+    "sensor_slope_1": "flat (noise)",
+}
+
+
 def plot_ground_truth_relations(df: pd.DataFrame,
                                 features: tuple[str, ...] = (
-                                    "metrology_x1", "vm_x1", "metrology_x2", "metrology_x3",
+                                    "metrology_x1", "metrology_x2",
+                                    "metrology_x3", "vm_x2",
                                 ),
-                                target_col: str = "yield",
+                                target_col: str = "total_fail_rate",
+                                specs: pd.DataFrame | None = None,
                                 n_bins: int = 20) -> go.Figure:
-    """For key features, scatter + binned-mean line in a 2x2 facet.
+    """For representative features (one per shape), scatter + binned-mean fail rate.
 
-    Lets the reviewer SEE the data-side reason a recommendation makes sense
-    (e.g. inverted-U for metrology_x1, step drop for vm_x1).
+    Optionally overlays current LSL/Target/USL vertical lines from specs so the
+    reviewer can immediately see whether the current SPEC sits inside or outside
+    the high-fail-rate region.
     """
     feats = [f for f in features if f in df.columns]
     if not feats or target_col not in df.columns:
         return go.Figure().update_layout(title="Ground-truth 관계: data 부족")
 
+    spec_map = specs.set_index("feature_name").to_dict("index") if specs is not None else {}
+
     rows = (len(feats) + 1) // 2
-    fig = go.Figure()
-    fig = px.scatter(title=f"핵심 feature vs {target_col} (scatter + bin mean)")
-    # Build facet manually via subplots
     from plotly.subplots import make_subplots
-    fig = make_subplots(rows=rows, cols=2, subplot_titles=feats,
+    titles = [f"{f} — {SHAPE_LABELS.get(f, '')}" for f in feats]
+    fig = make_subplots(rows=rows, cols=2, subplot_titles=titles,
                         horizontal_spacing=0.10, vertical_spacing=0.15)
     for i, f in enumerate(feats):
         r = i // 2 + 1
@@ -319,20 +335,28 @@ def plot_ground_truth_relations(df: pd.DataFrame,
             s = s.copy()
             s["bin"] = pd.qcut(s[f], q=n_bins, duplicates="drop")
             agg = s.groupby("bin", observed=True).agg(
-                mean_yield=(target_col, "mean"),
+                mean_y=(target_col, "mean"),
                 bin_center=(f, "mean"),
             ).reset_index(drop=True)
-            fig.add_trace(go.Scatter(x=agg["bin_center"], y=agg["mean_yield"],
+            fig.add_trace(go.Scatter(x=agg["bin_center"], y=agg["mean_y"],
                                      mode="lines+markers",
                                      line=dict(color="red", width=2),
                                      name="bin mean", showlegend=(i == 0)),
                           row=r, col=c)
         except ValueError:
             pass
+        if f in spec_map:
+            sp = spec_map[f]
+            for key, dash, color in [("current_lsl", "dash", "gray"),
+                                     ("current_target", "solid", "black"),
+                                     ("current_usl", "dash", "gray")]:
+                fig.add_vline(x=sp[key], line_dash=dash, line_color=color,
+                              line_width=1.2, row=r, col=c)
         fig.update_xaxes(title_text=f, row=r, col=c)
         fig.update_yaxes(title_text=target_col, row=r, col=c)
     fig.update_layout(height=300 * rows,
-                      title=f"핵심 feature ↔ {target_col} 관계 (planted ground truth)")
+                      title=(f"핵심 feature ↔ {target_col} 관계 "
+                             "(네 가지 window 모양 예시; 회색 점선 = 현재 LSL/USL)"))
     return fig
 
 

@@ -60,24 +60,42 @@ def _binned(df: pd.DataFrame, feature: str, target: str, n_bins: int = 20) -> pd
               .reset_index(drop=True))
 
 
-def fig_ground_truth(mart: pd.DataFrame, out: Path) -> Path:
-    feats = ["metrology_x1", "vm_x1", "metrology_x2", "metrology_x3"]
-    titles = [
-        "metrology_x1 (역U, true optimum ≈ 10)",
-        "vm_x1 (step, 95 미만 fail jump)",
-        "metrology_x2 (monotonic, 5.5 초과 fail↑)",
-        "metrology_x3 (noise, 관계 없음)",
+def fig_ground_truth(mart: pd.DataFrame, specs: pd.DataFrame, out: Path) -> Path:
+    """Per-shape ground-truth: fail rate y-axis + current LSL/USL vertical lines."""
+    panels = [
+        ("metrology_x1", "양쪽 들림 (U) — target 유지, window 좁힘이 정답"),
+        ("metrology_x2", "오른쪽 들림 — USL 좁힘이 정답"),
+        ("metrology_x3", "왼쪽 들림 — LSL 끌어올림이 정답"),
+        ("vm_x2",        "flat (noise) — 추천 없어야 정답"),
     ]
+    spec_map = specs.set_index("feature_name").to_dict("index")
+
     fig, axes = plt.subplots(2, 2, figsize=(13, 9))
-    for ax, f, t in zip(axes.ravel(), feats, titles):
-        ax.scatter(mart[f], mart["yield"], s=4, alpha=0.15, color="#1f77b4")
-        agg = _binned(mart, f, "yield")
-        ax.plot(agg["bin_center"], agg["mean_y"], color="red", lw=2, marker="o", ms=4)
-        ax.set_title(t, fontsize=11)
+    for ax, (f, title) in zip(axes.ravel(), panels):
+        ax.scatter(mart[f], mart["total_fail_rate"], s=4, alpha=0.15, color="#1f77b4")
+        agg = _binned(mart, f, "total_fail_rate")
+        ax.plot(agg["bin_center"], agg["mean_y"], color="red", lw=2, marker="o", ms=4,
+                label="bin mean fail rate")
+        if f in spec_map:
+            sp = spec_map[f]
+            ax.axvline(sp["current_lsl"], color="gray", ls="--", lw=1.2)
+            ax.axvline(sp["current_target"], color="black", ls="-", lw=1.0)
+            ax.axvline(sp["current_usl"], color="gray", ls="--", lw=1.2)
+            ax.text(sp["current_lsl"], ax.get_ylim()[1] * 0.97, "LSL",
+                    ha="right", va="top", fontsize=8, color="gray")
+            ax.text(sp["current_usl"], ax.get_ylim()[1] * 0.97, "USL",
+                    ha="left", va="top", fontsize=8, color="gray")
+        ax.set_title(f"{f} — {title}", fontsize=10)
         ax.set_xlabel(f)
-        ax.set_ylabel("yield")
+        ax.set_ylabel("total_fail_rate")
         ax.grid(alpha=0.3)
-    fig.suptitle("핵심 L1 feature ↔ yield 관계 (planted ground truth)", fontsize=13)
+        if ax is axes.ravel()[0]:
+            ax.legend(loc="best", fontsize=8)
+    fig.suptitle(
+        "핵심 L1 feature ↔ fail rate 관계 (네 가지 window 모양 예시)\n"
+        "회색 점선 = 현재 LSL/USL, 검은 실선 = 현재 target, 빨간 선 = bin 평균 fail rate",
+        fontsize=12,
+    )
     fig.tight_layout()
     fig.savefig(out, dpi=110, bbox_inches="tight")
     plt.close(fig)
@@ -246,7 +264,7 @@ def main():
                                    + cols_info["categorical_features"]])
 
     paths = {
-        "ground_truth": fig_ground_truth(mart, IMG_DIR / "ground_truth.png"),
+        "ground_truth": fig_ground_truth(mart, specs, IMG_DIR / "ground_truth.png"),
         "l1_dist": fig_l1_distributions(mart, cols_info["numeric_features"],
                                         IMG_DIR / "l1_distributions.png"),
         "pred_vs_actual": fig_predicted_vs_actual(y_true, y_pred,

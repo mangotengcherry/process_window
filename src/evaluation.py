@@ -78,7 +78,8 @@ def generate_html_report(model: Pipeline,
                          feature_importance_df: pd.DataFrame | None,
                          out_path: Path,
                          full_df: pd.DataFrame | None = None,
-                         numeric_features: list[str] | None = None) -> Path:
+                         numeric_features: list[str] | None = None,
+                         specs: pd.DataFrame | None = None) -> Path:
     """Write a single-file HTML evaluation report combining data + model + recommendation views.
 
     Sections:
@@ -110,7 +111,10 @@ def generate_html_report(model: Pipeline,
     if full_df is not None and numeric_features:
         fig_l1 = plot_l1_distributions(full_df, numeric_features)
         fig_l3 = plot_l3_distributions(full_df)
-        fig_gt = plot_ground_truth_relations(full_df, target_col=target_col)
+        # ground-truth: always shown in fail-rate space (fab 직관) + current SPEC overlay
+        fig_gt = plot_ground_truth_relations(
+            full_df, target_col="total_fail_rate", specs=specs,
+        )
         fig_seg_tool = plot_yield_by_segment(full_df, by="tool_id", target_col=target_col)
         fig_seg_prod = plot_yield_by_segment(full_df, by="product", target_col=target_col)
 
@@ -136,14 +140,14 @@ metrology_x1 (μ≈10, σ≈1), vm_x1 (μ≈100, σ≈3) 등.</p>
 가상 데이터지만 fab 의 일반적 형태.</p>
 {_fig_html(fig_l3)}
 
-<h3>0-4. 핵심 feature ↔ yield 관계 (planted ground truth)</h3>
-<p class="legend">파란 점 = 실제 wafer, 빨간 선 = bin 평균. 다음 4개 feature 의 관계가
-추천 결과 검증의 기준이 된다:</p>
+<h3>0-4. 핵심 feature ↔ fail rate 관계 (네 가지 window 모양 예시)</h3>
+<p class="legend">파란 점 = 실제 wafer, 빨간 선 = bin 평균 fail rate, 회색 점선 = 현재 LSL/USL.
+현장 직관에 맞춰 y축은 <b>total_fail_rate</b> 로 본다. 추천 결과 검증의 기준:</p>
 <ul class="legend">
-  <li><b>metrology_x1</b>: <i>역 U-자</i> (true optimum ≈ 10). 양쪽으로 멀어질수록 yield 떨어짐 → target 을 10 근처로 당겨야 함.</li>
-  <li><b>vm_x1</b>: <i>step</i> (≈95 미만에서 yield jump down) → LSL 을 95 위로 끌어올려야 함.</li>
-  <li><b>metrology_x2</b>: <i>단조 감소</i> (≈5.5 초과시 yield ↓) → USL 을 5.5 부근으로 좁혀야 함.</li>
-  <li><b>metrology_x3</b>: <i>관계 없음</i> (noise 만) → 추천 거의 없어야 정상 (Confidence C 기대).</li>
+  <li><b>metrology_x1</b> — <i>양쪽 들림 (U)</i>: optimum ≈ 10, 멀어질수록 fail↑. 정답 = target 유지, window 좁힘.</li>
+  <li><b>metrology_x2</b> — <i>오른쪽 들림</i>: 5.5 초과시 fail↑. 정답 = USL 좁힘.</li>
+  <li><b>metrology_x3</b> — <i>왼쪽 들림</i>: 18 미만시 fail↑. 정답 = LSL 끌어올림.</li>
+  <li><b>vm_x2</b> — <i>flat (noise)</i>: 관계 없음. 정답 = 추천 없음 (Confidence C 기대).</li>
 </ul>
 {_fig_html(fig_gt)}
 
